@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_rapier2d::prelude::*;
 
 const SPACESHIP_SIZE: Vec3 = Vec3::new(20.0, 100.0, 0.0);
 const SPACESHIP_COLOR: Color = Color::rgb(0.0, 0.5, 0.5);
@@ -10,9 +11,11 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(FixedTime::new_from_secs(1.0 / 60.0))
+        .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0))
+        .add_plugin(RapierDebugRenderPlugin::default())
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_spaceship)
-        .add_system(rotate_spaceship)
+        .add_system(spaceship_controller)
         .run()
 }
 
@@ -21,31 +24,32 @@ fn spawn_camera(mut commands: Commands) {
 }
 
 fn spawn_spaceship(mut commands: Commands) {
-    commands.spawn((
-        SpriteBundle {
-            transform: Transform {
-                translation: Vec3::new(0.0, 0.0, 0.0),
-                scale: SPACESHIP_SIZE,
-                ..default()
-            },
-            sprite: Sprite {
-                color: SPACESHIP_COLOR,
-                ..default()
-            },
-            ..default()
-        },
-        Spaceship,
-    ));
+    commands
+        .spawn(Spaceship)
+        .insert(RigidBody::Dynamic)
+        .insert(Collider::cuboid(SPACESHIP_SIZE[0], SPACESHIP_SIZE[1]))
+        .insert(TransformBundle::from(Transform::from_xyz(0.0, 0.0, 0.0)))
+        .insert(GravityScale(0.0))
+        .insert(Sleeping::disabled())
+        .insert(ExternalForce {
+            force: Vec2 { x: 0.0, y: 0.0 },
+            torque: 0.0,
+        });
 }
 
-fn rotate_spaceship(
+fn spaceship_controller(
     keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<&mut Transform, With<Spaceship>>,
+    mut spaceship: Query<(&mut ExternalForce, &Transform), With<Spaceship>>,
     time_step: Res<FixedTime>,
 ) {
-    let mut spaceship_transform = query.single_mut();
     let mut twist = 0.0;
     let mut thrust = 0.0;
+
+    let (mut force, trans) = spaceship.single_mut();
+
+    println!("{:?}", trans);
+
+    let vector = trans.local_y();
 
     if keyboard_input.pressed(KeyCode::A) {
         twist -= 1.0;
@@ -57,14 +61,11 @@ fn rotate_spaceship(
         thrust += 1.0;
     }
 
-    spaceship_transform.rotate_z(twist * SPACESHIP_ANGULAR_SPEED * time_step.period.as_secs_f32());
-
-    let spaceship_rot = spaceship_transform.local_y();
-
-    spaceship_transform.translation.x +=
-        spaceship_rot[0] * thrust * SPACESHIP_SPEED * time_step.period.as_secs_f32();
-    spaceship_transform.translation.y +=
-        spaceship_rot[1] * thrust * SPACESHIP_SPEED * time_step.period.as_secs_f32();
+    force.torque = twist * SPACESHIP_ANGULAR_SPEED * time_step.period.as_secs_f32();
+    force.force = Vec2::new(
+        thrust * SPACESHIP_SPEED * time_step.period.as_secs_f32() * vector[0],
+        thrust * SPACESHIP_SPEED * time_step.period.as_secs_f32() * vector[1],
+    );
 }
 
 #[derive(Component)]
