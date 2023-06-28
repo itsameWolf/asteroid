@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
 
-const SPACESHIP_SIZE: Vec3 = Vec3::new(20.0, 100.0, 0.0);
+const SPACESHIP_SIZE: Vec3 = Vec3::new(20.0, 50.0, 0.0);
 const SPACESHIP_COLOR: Color = Color::rgb(0.0, 0.5, 0.5);
 
-const SPACESHIP_SPEED: f32 = 150.0;
-const SPACESHIP_ANGULAR_SPEED: f32 = 2.0;
+const SPACESHIP_SPEED: f32 = 3000.0;
+const SPACESHIP_ANGULAR_SPEED: f32 = 4.0;
 
 fn main() {
     App::new()
@@ -23,7 +23,7 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
 
-fn spawn_spaceship(mut commands: Commands) {
+fn spawn_spaceship(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn(Spaceship)
         .insert(RigidBody::Dynamic)
@@ -34,6 +34,21 @@ fn spawn_spaceship(mut commands: Commands) {
         .insert(ExternalForce {
             force: Vec2 { x: 0.0, y: 0.0 },
             torque: 0.0,
+        })
+        .insert(Damping {
+            linear_damping: 1.0,
+            angular_damping: 1.0,
+        })
+        .insert(SpriteBundle {
+            texture: asset_server.load("spaceship.png"),
+            sprite: Sprite {
+                custom_size: Some(Vec2::from([
+                    SPACESHIP_SIZE[0] * 3.0,
+                    SPACESHIP_SIZE[1] * 2.0,
+                ])),
+                ..default()
+            },
+            ..default()
         });
 }
 
@@ -42,20 +57,17 @@ fn spaceship_controller(
     mut spaceship: Query<(&mut ExternalForce, &Transform), With<Spaceship>>,
     time_step: Res<FixedTime>,
 ) {
+    let (mut force, trans) = spaceship.single_mut();
+    let vector = trans.local_y();
+
     let mut twist = 0.0;
     let mut thrust = 0.0;
 
-    let (mut force, trans) = spaceship.single_mut();
-
-    println!("{:?}", trans);
-
-    let vector = trans.local_y();
-
     if keyboard_input.pressed(KeyCode::A) {
-        twist -= 1.0;
+        twist += 1.0;
     }
     if keyboard_input.pressed(KeyCode::D) {
-        twist += 1.0;
+        twist -= 1.0;
     }
     if keyboard_input.pressed(KeyCode::W) {
         thrust += 1.0;
@@ -76,6 +88,3 @@ struct Asteroid;
 
 #[derive(Component)]
 struct Projectile;
-
-#[derive(Component, Deref, DerefMut)]
-struct Velocity(Vec2);
