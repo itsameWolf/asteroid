@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
 use bevy_turborand::prelude::*;
+use std::f32::consts::PI;
 use std::ops::Mul;
 use std::time::Duration;
 
@@ -17,6 +18,7 @@ const MAX_ASTEROID_RADIUS: f32 = 40.0;
 const MIN_ASTEROID_RADIUS: f32 = 5.0;
 const MAX_ASTEROID_SPEED: f32 = 500.0;
 const MIN_ASTEROID_SPEED: f32 = 150.0;
+const ASTEROID_SPAWN_RADIUS: f32 = 1000.0;
 
 const ASTEROID_FREQUENCY: f32 = 1.5;
 
@@ -157,17 +159,8 @@ fn asteroid_shower(
     mut rng: ResMut<GlobalRng>,
 ) {
     if asteroid_timer.timer.finished() {
-        let origin = Vec3::new(
-            {
-                let x = rng.f32() - 0.5;
-                x * 100.0 + x.signum() * 500.0
-            },
-            {
-                let y = rng.f32() - 0.5;
-                y * 100.0 + y.signum() * 300.0
-            },
-            0.0,
-        );
+        let angle = rng.f32() * PI * 2.0;
+        let origin = Vec3::new(angle.cos(), angle.sin() / 2.0, 0.0).mul(ASTEROID_SPAWN_RADIUS);
         let target = Vec3::new(rng.f32() * 10.0 - 5.0, rng.f32() * 10.0 - 5.0, 0.0);
         let speed = rng.f32() * (MAX_ASTEROID_SPEED - MIN_ASTEROID_SPEED) + MIN_ASTEROID_SPEED;
         let radius = rng.f32() * (MAX_ASTEROID_RADIUS - MIN_ASTEROID_RADIUS) + MIN_ASTEROID_RADIUS;
