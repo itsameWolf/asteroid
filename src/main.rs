@@ -5,17 +5,20 @@ const SPACESHIP_SIZE: Vec3 = Vec3::new(20.0, 50.0, 0.0);
 const SPACESHIP_COLOR: Color = Color::rgb(0.0, 0.5, 0.5);
 
 const SPACESHIP_SPEED: f32 = 3000.0;
-const SPACESHIP_ANGULAR_SPEED: f32 = 4.0;
+const SPACESHIP_ANGULAR_SPEED: f32 = 8.0;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(FixedTime::new_from_secs(1.0 / 60.0))
+        .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0))
         .add_plugin(RapierDebugRenderPlugin::default())
+        .add_event::<ShootEvent>()
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_spaceship)
         .add_system(spaceship_controller)
+        .add_system(spawn_projectile)
         .run()
 }
 
@@ -27,8 +30,8 @@ fn spawn_spaceship(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn(Spaceship)
         .insert(RigidBody::Dynamic)
-        .insert(Collider::cuboid(SPACESHIP_SIZE[0], SPACESHIP_SIZE[1]))
-        .insert(TransformBundle::from(Transform::from_xyz(0.0, 0.0, 0.0)))
+        .insert(Collider::capsule_y(SPACESHIP_SIZE[1], SPACESHIP_SIZE[0]))
+        .insert(TransformBundle::from(Transform::from_xyz(0.0, 500.0, 0.0)))
         .insert(GravityScale(0.0))
         .insert(Sleeping::disabled())
         .insert(ExternalForce {
@@ -49,13 +52,50 @@ fn spawn_spaceship(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },
             ..default()
+        })
+        .with_children(|parent| {
+            parent
+                .spawn(Cannon)
+                .insert(CannonCooldown {
+                    timer: Timer::from_seconds(0.5, TimerMode::Once),
+                })
+                .insert(TransformBundle::from(Transform::from_xyz(0.0, 80.0, 0.0)));
         });
+}
+
+fn spawn_projectile(
+    mut commands: Commands,
+    mut cannon_state: Query<(&GlobalTransform, &mut CannonCooldown), With<Cannon>>,
+    mut shoot_event: EventReader<ShootEvent>,
+    time_step: Res<FixedTime>,
+) {
+    let (trans, mut cooldown) = cannon_state.single_mut();
+    if cooldown.timer.finished() {
+        for _ in shoot_event.iter() {
+            let rot = trans.up();
+            commands
+                .spawn(Projectile)
+                .insert(RigidBody::KinematicVelocityBased)
+                .insert(Collider::cuboid(1.0, 10.0))
+                .insert(*trans)
+                .insert(Velocity {
+                    linvel: Vec2 {
+                        x: rot[0] * 100.0,
+                        y: rot[1] * 100.0,
+                    },
+                    angvel: 0.0,
+                });
+            cooldown.timer.reset();
+        }
+    }
+    cooldown.timer.tick(time_step.period);
 }
 
 fn spaceship_controller(
     keyboard_input: Res<Input<KeyCode>>,
     mut spaceship: Query<(&mut ExternalForce, &Transform), With<Spaceship>>,
     time_step: Res<FixedTime>,
+    mut shoot_event: EventWriter<ShootEvent>,
 ) {
     let (mut force, trans) = spaceship.single_mut();
     let vector = trans.local_y();
@@ -71,6 +111,9 @@ fn spaceship_controller(
     }
     if keyboard_input.pressed(KeyCode::W) {
         thrust += 1.0;
+    }
+    if keyboard_input.pressed(KeyCode::Space) {
+        shoot_event.send_default();
     }
 
     force.torque = twist * SPACESHIP_ANGULAR_SPEED * time_step.period.as_secs_f32();
@@ -88,3 +131,14 @@ struct Asteroid;
 
 #[derive(Component)]
 struct Projectile;
+
+#[derive(Default)]
+struct ShootEvent;
+
+#[derive(Component)]
+struct Cannon;
+
+#[derive(Component)]
+struct CannonCooldown {
+    timer: Timer,
+}
