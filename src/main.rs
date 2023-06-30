@@ -2,12 +2,12 @@ use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
 use bevy_turborand::prelude::*;
 use std::f32::consts::PI;
-use std::ops::Mul;
+use std::ops::{Div, Mul};
 use std::time::Duration;
 
 const SPACESHIP_SIZE: Vec3 = Vec3::new(10.0, 20.0, 0.0);
-const SPACESHIP_THRUST: f32 = 1500.0;
-const SPACESHIP_TORQUE: f32 = 1.5;
+const SPACESHIP_THRUST: f32 = 10.0;
+const SPACESHIP_TORQUE: f32 = 0.05;
 
 const PROJECTILE_SIZE: Vec3 = Vec3::new(1.0, 5.0, 0.0);
 const PROJECTILE_SPEED: f32 = 250.0;
@@ -44,8 +44,9 @@ fn main() {
         .add_startup_system(spawn_planet)
         .add_system(spaceship_controller)
         .add_system(spawn_projectile)
-        .add_system(asteroid_shower)
+        //.add_system(asteroid_shower)
         .add_system(spawn_asteroid)
+        .add_system(planet_gravity)
         .run()
 }
 
@@ -64,7 +65,7 @@ fn spawn_spaceship(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ])),
                 ..default()
             },
-            transform: Transform::from_xyz(100.0, 100.0, 0.0),
+            transform: Transform::from_xyz(-250.0, 0.0, 0.0),
             ..default()
         })
         .insert(Spaceship)
@@ -72,13 +73,17 @@ fn spawn_spaceship(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert(Collider::capsule_y(SPACESHIP_SIZE[1], SPACESHIP_SIZE[0]))
         .insert(Sleeping::disabled())
         .insert(ExternalForce {
-            force: Vec2 { x: 0.0, y: 0.0 },
+            force: Vec2::ZERO,
             torque: 0.0,
         })
-        .insert(Damping {
-            linear_damping: 1.0,
-            angular_damping: 1.0,
+        .insert(ExternalImpulse {
+            impulse: Vec2::ZERO,
+            torque_impulse: 0.0,
         })
+        /*.insert(Damping {
+        linear_damping: 0.30,
+        angular_damping: 1.0,
+        })*/
         .with_children(|parent| {
             parent
                 .spawn(Cannon)
@@ -193,7 +198,7 @@ fn asteroid_shower(
 
 fn spaceship_controller(
     keyboard_input: Res<Input<KeyCode>>,
-    mut spaceship: Query<(&mut ExternalForce, &Transform), With<Spaceship>>,
+    mut spaceship: Query<(&mut ExternalImpulse, &Transform), With<Spaceship>>,
     time_step: Res<FixedTime>,
     mut shoot_event: EventWriter<ShootEvent>,
 ) {
@@ -216,11 +221,34 @@ fn spaceship_controller(
         shoot_event.send_default();
     }
 
-    force.torque = twist * SPACESHIP_TORQUE * time_step.period.as_secs_f32();
-    force.force = Vec2::new(
+    force.torque_impulse = twist * SPACESHIP_TORQUE * time_step.period.as_secs_f32();
+    force.impulse = Vec2::new(
         thrust * SPACESHIP_THRUST * time_step.period.as_secs_f32() * vector[0],
         thrust * SPACESHIP_THRUST * time_step.period.as_secs_f32() * vector[1],
     );
+}
+
+fn planet_gravity(
+    //planet: Query<&Transform, With<Planet>>,
+    mut spaceship: Query<(&GlobalTransform, &mut ExternalForce), With<Spaceship>>,
+    timer: Res<FixedTime>,
+) {
+    //let planet = planet.single();
+    let (spaseship_glob, mut force) = spaceship.single_mut();
+
+    let distance = spaseship_glob.translation().length();
+
+    if distance > 0.0 {
+        let pull = (50.0 / distance * distance) * timer.period.as_secs_f32();
+
+        force.force = spaseship_glob
+            .translation()
+            .truncate()
+            .normalize()
+            .mul(-pull);
+
+        //println!("{:#?}", spaseship_glob.translation());
+    }
 }
 
 #[derive(Component)]
