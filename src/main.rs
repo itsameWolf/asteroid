@@ -30,6 +30,10 @@ fn main() {
             timer: Timer::from_seconds(ASTEROID_FREQUENCY, TimerMode::Repeating),
         })
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
+        .insert_resource(RapierConfiguration {
+            gravity: Vec2::ZERO,
+            ..default()
+        })
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0))
         .add_plugin(RngPlugin::default())
         .add_plugin(RapierDebugRenderPlugin::default())
@@ -64,7 +68,6 @@ fn spawn_spaceship(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert(Spaceship)
         .insert(RigidBody::Dynamic)
         .insert(Collider::capsule_y(SPACESHIP_SIZE[1], SPACESHIP_SIZE[0]))
-        .insert(GravityScale(0.0))
         .insert(Sleeping::disabled())
         .insert(ExternalForce {
             force: Vec2 { x: 0.0, y: 0.0 },
@@ -109,8 +112,9 @@ fn spawn_projectile(
                     ..default()
                 })
                 .insert(Projectile)
-                .insert(RigidBody::KinematicVelocityBased)
+                .insert(RigidBody::Dynamic)
                 .insert(Collider::capsule_y(PROJECTILE_SIZE[1], PROJECTILE_SIZE[0]))
+                .insert(AdditionalMassProperties::Mass(1000.0))
                 .insert(Velocity {
                     linvel: Vec2 {
                         x: rot[0] * PROJECTILE_SPEED,
@@ -144,7 +148,7 @@ fn spawn_asteroid(
                 ..default()
             })
             .insert(Asteroid)
-            .insert(RigidBody::KinematicVelocityBased)
+            .insert(RigidBody::Dynamic)
             .insert(Collider::ball(asteroid.3))
             .insert(Velocity {
                 linvel: force_vec.truncate().mul(asteroid.2),
@@ -164,10 +168,6 @@ fn asteroid_shower(
         let target = Vec3::new(rng.f32() * 10.0 - 5.0, rng.f32() * 10.0 - 5.0, 0.0);
         let speed = rng.f32() * (MAX_ASTEROID_SPEED - MIN_ASTEROID_SPEED) + MIN_ASTEROID_SPEED;
         let radius = rng.f32() * (MAX_ASTEROID_RADIUS - MIN_ASTEROID_RADIUS) + MIN_ASTEROID_RADIUS;
-        println!(
-            "Asteroid spawned from {:?} going to {:?} at {:?}",
-            origin, target, speed
-        );
         asteroid_event.send(AsteroidEvent(origin, target, speed, radius));
     }
     asteroid_timer
