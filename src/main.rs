@@ -41,6 +41,7 @@ fn main() {
         .add_event::<AsteroidEvent>()
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_spaceship)
+        .add_startup_system(spawn_planet)
         .add_system(spaceship_controller)
         .add_system(spawn_projectile)
         .add_system(asteroid_shower)
@@ -63,6 +64,7 @@ fn spawn_spaceship(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ])),
                 ..default()
             },
+            transform: Transform::from_xyz(100.0, 100.0, 0.0),
             ..default()
         })
         .insert(Spaceship)
@@ -83,7 +85,7 @@ fn spawn_spaceship(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .insert(CannonCooldown {
                     timer: Timer::from_seconds(0.5, TimerMode::Once),
                 })
-                .insert(TransformBundle::from(Transform::from(CANNON_TRANSFORM)));
+                .insert(TransformBundle::from(CANNON_TRANSFORM));
         });
 }
 
@@ -157,6 +159,20 @@ fn spawn_asteroid(
     }
 }
 
+fn spawn_planet(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands
+        .spawn(SpriteBundle {
+            texture: asset_server.load("planet.png"),
+            sprite: Sprite {
+                custom_size: Some(Vec2 { x: 100.0, y: 100.0 }),
+                ..default()
+            },
+            ..default()
+        })
+        .insert(RigidBody::KinematicPositionBased)
+        .insert(Collider::ball(50.0));
+}
+
 fn asteroid_shower(
     mut asteroid_event: EventWriter<AsteroidEvent>,
     mut asteroid_timer: ResMut<AsteroidCooldown>,
@@ -212,6 +228,9 @@ struct Spaceship;
 
 #[derive(Component)]
 struct Asteroid;
+
+#[derive(Component)]
+struct Planet;
 
 #[derive(Component)]
 struct Projectile;
