@@ -1,33 +1,45 @@
 use bevy::prelude::*;
+use bevy::window::WindowMode;
+use bevy::window::WindowResolution;
 use bevy_rapier2d::prelude::*;
 use bevy_turborand::prelude::*;
 use std::f32::consts::PI;
-use std::ops::{Div, Mul};
+use std::ops::Mul;
 use std::time::Duration;
 
 const SPACESHIP_SIZE: Vec3 = Vec3::new(10.0, 20.0, 0.0);
-const SPACESHIP_THRUST: f32 = 10.0;
+const SPACESHIP_THRUST: f32 = 2.0;
 const SPACESHIP_TORQUE: f32 = 0.05;
 
 const PROJECTILE_SIZE: Vec3 = Vec3::new(1.0, 5.0, 0.0);
-const PROJECTILE_SPEED: f32 = 250.0;
+const PROJECTILE_SPEED: f32 = 900.0;
 
 const CANNON_TRANSFORM: Transform = Transform::from_xyz(0.0, 37.0, 0.0);
 
-const MAX_ASTEROID_RADIUS: f32 = 40.0;
-const MIN_ASTEROID_RADIUS: f32 = 5.0;
-const MAX_ASTEROID_SPEED: f32 = 500.0;
-const MIN_ASTEROID_SPEED: f32 = 150.0;
-const ASTEROID_SPAWN_RADIUS: f32 = 1000.0;
+const MAX_ASTEROID_RADIUS: f32 = 30.0;
+const MIN_ASTEROID_RADIUS: f32 = 10.0;
+const MAX_ASTEROID_SPEED: f32 = 80.0;
+const MIN_ASTEROID_SPEED: f32 = 40.0;
+const ASTEROID_SPAWN_RADIUS: f32 = 2000.0;
 
-const ASTEROID_FREQUENCY: f32 = 1.5;
+const ASTEROID_PERIOD: f32 = 12.0;
+
+const PLANET_GRAVITY: f32 = 600.0;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                mode: WindowMode::Fullscreen,
+                resolution: WindowResolution::new(1000.0, 1000.0).with_scale_factor_override(1.0),
+                //title: String::from("Asteroid Inc."),
+                ..default()
+            }),
+            ..default()
+        }))
         .insert_resource(FixedTime::new_from_secs(1.0 / 60.0))
         .insert_resource(AsteroidCooldown {
-            timer: Timer::from_seconds(ASTEROID_FREQUENCY, TimerMode::Repeating),
+            timer: Timer::from_seconds(ASTEROID_PERIOD, TimerMode::Repeating),
         })
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .insert_resource(RapierConfiguration {
@@ -44,7 +56,7 @@ fn main() {
         .add_startup_system(spawn_planet)
         .add_system(spaceship_controller)
         .add_system(spawn_projectile)
-        //.add_system(asteroid_shower)
+        .add_system(asteroid_shower)
         .add_system(spawn_asteroid)
         .add_system(planet_gravity)
         .run()
@@ -65,7 +77,7 @@ fn spawn_spaceship(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ])),
                 ..default()
             },
-            transform: Transform::from_xyz(-250.0, 0.0, 0.0),
+            transform: Transform::from_xyz(-375.0, 0.0, 0.0),
             ..default()
         })
         .insert(Spaceship)
@@ -80,10 +92,15 @@ fn spawn_spaceship(mut commands: Commands, asset_server: Res<AssetServer>) {
             impulse: Vec2::ZERO,
             torque_impulse: 0.0,
         })
-        /*.insert(Damping {
-        linear_damping: 0.30,
-        angular_damping: 1.0,
-        })*/
+        .insert(Velocity {
+            linvel: Vec2 { x: 0.0, y: 200.0 },
+            angvel: 0.0,
+        })
+        .insert(Damping {
+            linear_damping: 0.005,
+            angular_damping: 3.0,
+        })
+        .insert(Orbiting)
         .with_children(|parent| {
             parent
                 .spawn(Cannon)
@@ -160,7 +177,9 @@ fn spawn_asteroid(
             .insert(Velocity {
                 linvel: force_vec.truncate().mul(asteroid.2),
                 angvel: 0.0,
-            });
+            })
+            .insert(ExternalForce::default())
+            .insert(Orbiting);
     }
 }
 
@@ -169,13 +188,17 @@ fn spawn_planet(mut commands: Commands, asset_server: Res<AssetServer>) {
         .spawn(SpriteBundle {
             texture: asset_server.load("planet.png"),
             sprite: Sprite {
-                custom_size: Some(Vec2 { x: 100.0, y: 100.0 }),
+                custom_size: Some(Vec2 { x: 410.0, y: 410.0 }),
                 ..default()
             },
             ..default()
         })
         .insert(RigidBody::KinematicPositionBased)
-        .insert(Collider::ball(50.0));
+        .insert(Collider::ball(200.0))
+        .insert(GravityWell {
+            intensity: PLANET_GRAVITY,
+            max_radius: 600.0,
+        });
 }
 
 fn asteroid_shower(
@@ -229,25 +252,20 @@ fn spaceship_controller(
 }
 
 fn planet_gravity(
-    //planet: Query<&Transform, With<Planet>>,
-    mut spaceship: Query<(&GlobalTransform, &mut ExternalForce), With<Spaceship>>,
+    well: Query<(&GlobalTransform, &GravityWell)>,
+    mut body: Query<(&GlobalTransform, &mut ExternalForce), With<Orbiting>>,
     timer: Res<FixedTime>,
 ) {
-    //let planet = planet.single();
-    let (spaseship_glob, mut force) = spaceship.single_mut();
+    for (centre, well) in well.iter() {
+        for (body_glob, mut force) in body.iter_mut() {
+            let distance = (body_glob.translation() - centre.translation()).length();
 
-    let distance = spaseship_glob.translation().length();
+            if distance > 0.0 && distance < well.max_radius {
+                let pull = (well.intensity / distance * distance) * timer.period.as_secs_f32();
 
-    if distance > 0.0 {
-        let pull = (50.0 / distance * distance) * timer.period.as_secs_f32();
-
-        force.force = spaseship_glob
-            .translation()
-            .truncate()
-            .normalize()
-            .mul(-pull);
-
-        //println!("{:#?}", spaseship_glob.translation());
+                force.force = body_glob.translation().truncate().normalize().mul(-pull);
+            }
+        }
     }
 }
 
@@ -265,6 +283,15 @@ struct Projectile;
 
 #[derive(Component)]
 struct Cannon;
+
+#[derive(Component)]
+struct GravityWell {
+    intensity: f32,
+    max_radius: f32,
+}
+
+#[derive(Component)]
+struct Orbiting;
 
 #[derive(Component)]
 struct CannonCooldown {
