@@ -30,8 +30,8 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                mode: WindowMode::Fullscreen,
-                resolution: WindowResolution::new(1000.0, 1000.0).with_scale_factor_override(1.0),
+                //mode: WindowMode::Fullscreen,
+                resolution: WindowResolution::new(1500.0, 1500.0).with_scale_factor_override(1.0),
                 //title: String::from("Asteroid Inc."),
                 ..default()
             }),
@@ -59,6 +59,7 @@ fn main() {
         .add_system(asteroid_shower)
         .add_system(spawn_asteroid)
         .add_system(planet_gravity)
+        .add_system(asteroid_collision_handler)
         .run()
 }
 
@@ -179,7 +180,9 @@ fn spawn_asteroid(
                 angvel: 0.0,
             })
             .insert(ExternalForce::default())
-            .insert(Orbiting);
+            .insert(Orbiting)
+            .insert(ActiveEvents::COLLISION_EVENTS)  
+            .insert(ActiveEvents::CONTACT_FORCE_EVENTS);
     }
 }
 
@@ -267,6 +270,31 @@ fn planet_gravity(
             }
         }
     }
+}
+
+fn asteroid_collision_handler(mut contact_event: EventReader<ContactForceEvent>,
+                              asteroids: Query<(Entity, &Asteroid), With<Asteroid>>,
+                              projectiles: Query<(Entity, &Projectile), With<Projectile>>,
+                              mut commands: Commands,
+                              ) {
+    for collision in contact_event.iter() {
+        for (asteroid, _ ) in asteroids.iter() {
+            for (projectile, _ ) in projectiles.iter() {
+                let ContactForceEvent{
+                    collider1: h1,
+                    collider2: h2,
+                    total_force: _,
+                    total_force_magnitude: _,
+                    max_force_direction: _,
+                    max_force_magnitude: _,
+                } = collision; 
+                    if  (&projectile == h1 && &asteroid == h2) || (&asteroid == h1 && &projectile == h2) {
+                        commands.entity(projectile).despawn();
+                    
+                 }
+            }
+        }
+    }         
 }
 
 #[derive(Component)]
